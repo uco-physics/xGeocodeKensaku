@@ -3,175 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X(Twitter) Geocode Generator Pro</title>
+    <title>X Geocode Generator</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        #controls { padding: 15px; background: #f8f9fa; border-bottom: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 1000; }
-        #map { flex-grow: 1; }
-        .result-area { margin-top: 10px; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        #query-display { font-family: monospace; word-break: break-all; color: #1d9bf0; font-weight: bold; }
-        .btn { padding: 8px 15px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; margin-right: 5px; margin-bottom: 5px; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; color: #333; }
+        #controls { padding: 15px; background: #fff; border-bottom: 1px solid #ddd; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        #map { flex-grow: 1; z-index: 1; }
+        
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .lang-select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+        
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { padding: 10px 16px; cursor: pointer; border: none; border-radius: 20px; font-weight: bold; transition: opacity 0.2s; }
         .btn-add { background: #1d9bf0; color: white; }
         .btn-exclude { background: #e0245e; color: white; }
-        .btn-copy { background: #4b5563; color: white; }
-        .instruction { font-size: 0.85rem; color: #666; margin-bottom: 8px; }
-        .lang-selector { margin-bottom: 10px; float: right; }
-        #radius-control { 
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; 
-            box-shadow: 0 0 10px rgba(0,0,0,0.2); z-index: 2000; display: none;
-            text-align: center; min-width: 250px;
+        .btn-copy { background: #0f1419; color: white; }
+        .btn:hover { opacity: 0.8; }
+        .btn:active { transform: scale(0.98); }
+
+        .result-area { margin-top: 12px; background: #f7f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eff3f4; }
+        #query-display { font-family: monospace; word-break: break-all; color: #1d9bf0; font-size: 0.9rem; }
+        
+        /* 半径調整パネル */
+        #radius-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 2000;
+            display: none; text-align: center; width: 280px;
         }
+        input[type=range] { width: 100%; margin: 15px 0; }
+        .instruction { font-size: 0.8rem; color: #536471; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div id="controls">
-    <div class="lang-selector">
-        <select id="langSelect" onchange="changeLanguage()">
+    <div class="header-row">
+        <h3 style="margin:0" id="ui-title">X Geocode Generator</h3>
+        <select id="langSelect" class="lang-select" onchange="updateLanguage()">
             <option value="ja">日本語</option>
             <option value="en">English</option>
-            <option value="zh">简体中文</option>
         </select>
     </div>
-    <h3 id="ui-title">X Geocode Generator</h3>
-    <p class="instruction" id="ui-instruction">1. ボタンを押して地図をクリック / 2. 円をクリックして半径調整 / 3. ダブルクリックで削除</p>
+    <p class="instruction" id="ui-instruction">1. ボタン選択 → 2. 地図をクリック → 3. 円をクリックして半径調整</p>
     
-    <button class="btn btn-add" id="ui-btn-add" onclick="setMode('include')">+ 検索範囲を追加</button>
-    <button class="btn btn-exclude" id="ui-btn-exclude" onclick="setMode('exclude')">- 除外範囲を追加</button>
-    <button class="btn btn-copy" id="ui-btn-copy" onclick="copyToClipboard()">コマンドをコピー</button>
+    <div class="btn-group">
+        <button class="btn btn-add" id="ui-btn-add" onclick="setMode('include')">+ 検索範囲</button>
+        <button class="btn btn-exclude" id="ui-btn-exclude" onclick="setMode('exclude')">- 除外範囲</button>
+        <button class="btn btn-copy" id="ui-btn-copy" onclick="copyToClipboard()">コピー</button>
+    </div>
     
     <div class="result-area">
-        <strong id="ui-label-result">検索コマンド:</strong><br>
-        <span id="query-display"></span>
+        <div id="query-display">geocode:lat,lng,radiuskm...</div>
     </div>
 </div>
 
 <div id="map"></div>
 
-<div id="radius-control">
-    <label id="ui-label-radius">半径 (km):</label> <span id="radius-val">50</span>km<br>
-    <input type="range" id="radius-slider" min="1" max="1000" value="50" style="width: 200px;">
-    <br><button class="btn" onclick="closeRadiusControl()" style="margin-top:5px; font-size: 12px;">OK</button>
+<div id="radius-panel">
+    <div id="ui-radius-label" style="font-weight:bold;">半径調整</div>
+    <input type="range" id="radius-slider" min="1" max="1000" value="50">
+    <div><span id="radius-val">50</span> km</div>
+    <button class="btn" onclick="closePanel()" style="background:#eee; color:#333; margin-top:10px; width:100%">OK</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // 言語設定データ
-    const i18n = {
+    // 多言語辞書
+    const translations = {
         ja: {
-            title: "X Geocode Generator",
-            instruction: "1. ボタンを押して地図をクリック / 2. 円をクリックして半径調整 / 3. ダブルクリックで削除",
+            title: "X Geocode 生成器",
+            instruction: "1. ボタン選択 → 2. 地図をクリックして円を設置 (ダブルクリックで削除)",
             btnAdd: "+ 検索範囲を追加",
             btnExclude: "- 除外範囲を追加",
             btnCopy: "コマンドをコピー",
-            labelResult: "検索コマンド:",
-            labelRadius: "半径:",
-            copied: "コピーしました！",
-            mapLang: "ja"
+            radiusLabel: "半径の調整",
+            copied: "コピーしました！"
         },
         en: {
             title: "X Geocode Generator",
-            instruction: "1. Click button then Map / 2. Click circle to resize / 3. Double click to delete",
-            btnAdd: "+ Add Location",
-            btnExclude: "- Exclude Location",
+            instruction: "1. Select mode → 2. Click map to place circle (Double-click to delete)",
+            btnAdd: "+ Add Area",
+            btnExclude: "- Exclude Area",
             btnCopy: "Copy Command",
-            labelResult: "Search Command:",
-            labelRadius: "Radius:",
-            copied: "Copied to clipboard!",
-            mapLang: "en"
-        },
-        zh: {
-            title: "X 地理位置生成器",
-            instruction: "1. 点击按钮并在地图上选择 / 2. 点击圆圈调整半径 / 3. 双击删除",
-            btnAdd: "+ 添加范围",
-            btnExclude: "- 排除范围",
-            btnCopy: "复制命令",
-            labelResult: "搜索命令:",
-            labelRadius: "半径:",
-            copied: "已复制到剪貼板！",
-            mapLang: "zh"
+            radiusLabel: "Adjust Radius",
+            copied: "Copied!"
         }
     };
 
-    let map = L.map('map').setView([35.68, 139.76], 7);
-    let tileLayer;
-    let includeCircles = [];
-    let excludeCircles = [];
+    // 地図の初期化（OpenStreetMap標準タイルを使用）
+    const map = L.map('map').setView([35.68, 139.76], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let circles = [];
     let currentMode = null;
     let selectedCircle = null;
 
-    // 地図タイルの更新（多言語対応）
-    function updateMapTile(langCode) {
-        if (tileLayer) map.removeLayer(tileLayer);
-        // Wikimediaのタイルレイヤーを使用（言語切り替え対応）
-        const lang = i18n[langCode].mapLang;
-        tileLayer = L.tileLayer(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}${lang !== 'en' ? '?lang=' + lang : ''}.png`, {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-    }
-
-    // UI言語の更新
-    function changeLanguage() {
+    function updateLanguage() {
         const lang = document.getElementById('langSelect').value;
-        const t = i18n[lang];
-        
+        const t = translations[lang];
         document.getElementById('ui-title').innerText = t.title;
         document.getElementById('ui-instruction').innerText = t.instruction;
         document.getElementById('ui-btn-add').innerText = t.btnAdd;
         document.getElementById('ui-btn-exclude').innerText = t.btnExclude;
         document.getElementById('ui-btn-copy').innerText = t.btnCopy;
-        document.getElementById('ui-label-result').innerText = t.labelResult;
-        document.getElementById('ui-label-radius').innerText = t.labelRadius;
-
-        updateMapTile(lang);
+        document.getElementById('ui-radius-label').innerText = t.radiusLabel;
     }
 
     function setMode(mode) {
         currentMode = mode;
-        document.body.style.cursor = 'crosshair';
+        document.getElementById('map').style.cursor = 'crosshair';
     }
 
     map.on('click', function(e) {
         if (!currentMode) return;
 
-        const color = currentMode === 'include' ? '#1d9bf0' : '#e0245e';
+        const isInclude = currentMode === 'include';
+        const color = isInclude ? '#1d9bf0' : '#e0245e';
+        
         const circle = L.circle(e.latlng, {
             color: color,
             fillColor: color,
-            fillOpacity: 0.3,
-            radius: 50000 // 初期50km
+            fillOpacity: 0.4,
+            radius: 50000, // 50km
+            mode: currentMode
         }).addTo(map);
 
-        // 円のクリックイベント：半径調整
+        // 円クリックで編集
         circle.on('click', function(ev) {
-            L.DomEvent.stopPropagation(ev); // 地図クリックの発火を防ぐ
-            openRadiusControl(circle);
+            L.DomEvent.stopPropagation(ev);
+            openPanel(circle);
         });
 
         // ダブルクリックで削除
         circle.on('dblclick', function(ev) {
             L.DomEvent.stopPropagation(ev);
             map.removeLayer(circle);
-            includeCircles = includeCircles.filter(c => c !== circle);
-            excludeCircles = excludeCircles.filter(c => c !== circle);
-            closeRadiusControl();
+            circles = circles.filter(c => c !== circle);
+            closePanel();
             updateQuery();
         });
 
-        if (currentMode === 'include') includeCircles.push(circle);
-        else excludeCircles.push(circle);
-
+        circles.push(circle);
         updateQuery();
         currentMode = null;
-        document.body.style.cursor = 'default';
+        document.getElementById('map').style.cursor = '';
     });
 
-    // 半径調整パネルの制御
-    function openRadiusControl(circle) {
+    function openPanel(circle) {
         selectedCircle = circle;
-        const panel = document.getElementById('radius-control');
+        const panel = document.getElementById('radius-panel');
         const slider = document.getElementById('radius-slider');
         const valDisp = document.getElementById('radius-val');
         
@@ -180,44 +163,39 @@
         valDisp.innerText = slider.value;
 
         slider.oninput = function() {
-            const km = this.value;
-            valDisp.innerText = km;
-            selectedCircle.setRadius(km * 1000);
+            valDisp.innerText = this.value;
+            selectedCircle.setRadius(this.value * 1000);
             updateQuery();
         };
     }
 
-    function closeRadiusControl() {
-        document.getElementById('radius-control').style.display = 'none';
+    function closePanel() {
+        document.getElementById('radius-panel').style.display = 'none';
         selectedCircle = null;
     }
 
     function updateQuery() {
-        let queryParts = [];
-        const format = (c, prefix) => {
+        const query = circles.map(c => {
             const lat = c.getLatLng().lat.toFixed(4);
             const lng = c.getLatLng().lng.toFixed(4);
             const rad = Math.round(c.getRadius() / 1000);
+            const prefix = c.options.mode === 'exclude' ? '-' : '';
             return `${prefix}geocode:${lat},${lng},${rad}km`;
-        };
-
-        includeCircles.forEach(c => queryParts.push(format(c, '')));
-        excludeCircles.forEach(c => queryParts.push(format(c, '-')));
-
-        document.getElementById('query-display').innerText = queryParts.join(' ');
+        }).join(' ');
+        
+        document.getElementById('query-display').innerText = query || "geocode:lat,lng,radiuskm";
     }
 
     function copyToClipboard() {
         const text = document.getElementById('query-display').innerText;
         const lang = document.getElementById('langSelect').value;
-        if (!text) return;
         navigator.clipboard.writeText(text).then(() => {
-            alert(i18n[lang].copied);
+            alert(translations[lang].copied);
         });
     }
 
-    // 初期化
-    changeLanguage();
+    // 初期言語セット
+    updateLanguage();
 </script>
 
 </body>
