@@ -3,114 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X(Twitter) Geocode Generator</title>
+    <title>X(Twitter) Geocode Generator Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
         #controls { padding: 15px; background: #f8f9fa; border-bottom: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 1000; }
         #map { flex-grow: 1; }
         .result-area { margin-top: 10px; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        #query-display { font-family: monospace; word-break: break-all; color: #1d9bf0; font-weight: bold; min-height: 1.2em; display: block; }
+        #query-display { font-family: monospace; word-break: break-all; color: #1d9bf0; font-weight: bold; }
         .btn { padding: 8px 15px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; margin-right: 5px; margin-bottom: 5px; }
         .btn-add { background: #1d9bf0; color: white; }
         .btn-exclude { background: #e0245e; color: white; }
         .btn-copy { background: #4b5563; color: white; }
         .instruction { font-size: 0.85rem; color: #666; margin-bottom: 8px; }
         .lang-selector { margin-bottom: 10px; float: right; }
-        select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+        #radius-control { 
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.2); z-index: 2000; display: none;
+            text-align: center; min-width: 250px;
+        }
     </style>
 </head>
 <body>
 
 <div id="controls">
     <div class="lang-selector">
-        <select id="language-select" onchange="changeLanguage()">
+        <select id="langSelect" onchange="changeLanguage()">
             <option value="ja">日本語</option>
             <option value="en">English</option>
-            <option value="zh">中文</option>
+            <option value="zh">简体中文</option>
         </select>
     </div>
     <h3 id="ui-title">X Geocode Generator</h3>
-    <p class="instruction" id="ui-instruction">1. ボタンを押してから地図をクリックして円を設置 / 2. 中心をドラッグして移動 / 3. ダブルクリックで削除</p>
+    <p class="instruction" id="ui-instruction">1. ボタンを押して地図をクリック / 2. 円をクリックして半径調整 / 3. ダブルクリックで削除</p>
     
     <button class="btn btn-add" id="ui-btn-add" onclick="setMode('include')">+ 検索範囲を追加</button>
     <button class="btn btn-exclude" id="ui-btn-exclude" onclick="setMode('exclude')">- 除外範囲を追加</button>
     <button class="btn btn-copy" id="ui-btn-copy" onclick="copyToClipboard()">コマンドをコピー</button>
     
     <div class="result-area">
-        <strong id="ui-result-label">検索コマンド:</strong><br>
+        <strong id="ui-label-result">検索コマンド:</strong><br>
         <span id="query-display"></span>
     </div>
 </div>
 
 <div id="map"></div>
 
+<div id="radius-control">
+    <label id="ui-label-radius">半径 (km):</label> <span id="radius-val">50</span>km<br>
+    <input type="range" id="radius-slider" min="1" max="1000" value="50" style="width: 200px;">
+    <br><button class="btn" onclick="closeRadiusControl()" style="margin-top:5px; font-size: 12px;">OK</button>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // 多言語辞書
+    // 言語設定データ
     const i18n = {
         ja: {
             title: "X Geocode Generator",
-            instruction: "1. ボタンを押して地図をクリック / 2. 中心ドラッグで移動 / 3. ダブルクリックで削除",
+            instruction: "1. ボタンを押して地図をクリック / 2. 円をクリックして半径調整 / 3. ダブルクリックで削除",
             btnAdd: "+ 検索範囲を追加",
             btnExclude: "- 除外範囲を追加",
             btnCopy: "コマンドをコピー",
-            resultLabel: "検索コマンド:",
-            copyMsg: "コピーしました！",
-            tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" // 標準OSM
+            labelResult: "検索コマンド:",
+            labelRadius: "半径:",
+            copied: "コピーしました！",
+            mapLang: "ja"
         },
         en: {
             title: "X Geocode Generator",
-            instruction: "1. Click button then map to add / 2. Drag center to move / 3. Double-click to delete",
-            btnAdd: "+ Add Search Area",
-            btnExclude: "- Add Exclude Area",
+            instruction: "1. Click button then Map / 2. Click circle to resize / 3. Double click to delete",
+            btnAdd: "+ Add Location",
+            btnExclude: "- Exclude Location",
             btnCopy: "Copy Command",
-            resultLabel: "Search Command:",
-            copyMsg: "Copied!",
-            tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            labelResult: "Search Command:",
+            labelRadius: "Radius:",
+            copied: "Copied to clipboard!",
+            mapLang: "en"
         },
         zh: {
-            title: "X 地理编码生成器",
-            instruction: "1. 点击按钮后点击地图 / 2. 拖动中心移动 / 3. 双击删除",
-            btnAdd: "+ 添加搜索范围",
-            btnExclude: "- 添加排除范围",
+            title: "X 地理位置生成器",
+            instruction: "1. 点击按钮并在地图上选择 / 2. 点击圆圈调整半径 / 3. 双击删除",
+            btnAdd: "+ 添加范围",
+            btnExclude: "- 排除范围",
             btnCopy: "复制命令",
-            resultLabel: "搜索命令:",
-            copyMsg: "已复制！",
-            tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            labelResult: "搜索命令:",
+            labelRadius: "半径:",
+            copied: "已复制到剪貼板！",
+            mapLang: "zh"
         }
     };
 
-    let currentLang = 'ja';
-    let map = L.map('map').setView([35.6812, 139.7671], 5); // 初期位置: 東京
-    let tileLayer = L.tileLayer(i18n[currentLang].tileUrl, {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
+    let map = L.map('map').setView([35.68, 139.76], 7);
+    let tileLayer;
     let includeCircles = [];
     let excludeCircles = [];
     let currentMode = null;
+    let selectedCircle = null;
 
+    // 地図タイルの更新（多言語対応）
+    function updateMapTile(langCode) {
+        if (tileLayer) map.removeLayer(tileLayer);
+        // Wikimediaのタイルレイヤーを使用（言語切り替え対応）
+        const lang = i18n[langCode].mapLang;
+        tileLayer = L.tileLayer(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}${lang !== 'en' ? '?lang=' + lang : ''}.png`, {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+    }
+
+    // UI言語の更新
     function changeLanguage() {
-        currentLang = document.getElementById('language-select').value;
+        const lang = document.getElementById('langSelect').value;
+        const t = i18n[lang];
         
-        // UIテキストの更新
-        document.getElementById('ui-title').innerText = i18n[currentLang].title;
-        document.getElementById('ui-instruction').innerText = i18n[currentLang].instruction;
-        document.getElementById('ui-btn-add').innerText = i18n[currentLang].btnAdd;
-        document.getElementById('ui-btn-exclude').innerText = i18n[currentLang].btnExclude;
-        document.getElementById('ui-btn-copy').innerText = i18n[currentLang].btnCopy;
-        document.getElementById('ui-result-label').innerText = i18n[currentLang].resultLabel;
+        document.getElementById('ui-title').innerText = t.title;
+        document.getElementById('ui-instruction').innerText = t.instruction;
+        document.getElementById('ui-btn-add').innerText = t.btnAdd;
+        document.getElementById('ui-btn-exclude').innerText = t.btnExclude;
+        document.getElementById('ui-btn-copy').innerText = t.btnCopy;
+        document.getElementById('ui-label-result').innerText = t.labelResult;
+        document.getElementById('ui-label-radius').innerText = t.labelRadius;
 
-        // 地図の再描画（言語切り替え対応タイルがある場合）
-        map.removeLayer(tileLayer);
-        // 注: OSM標準タイルは言語固定ですが、多言語タイルサーバーを指定すればここで切り替わります
-        tileLayer = L.tileLayer(i18n[currentLang].tileUrl).addTo(map);
+        updateMapTile(lang);
     }
 
     function setMode(mode) {
         currentMode = mode;
-        document.getElementById('map').style.cursor = 'crosshair';
+        document.body.style.cursor = 'crosshair';
     }
 
     map.on('click', function(e) {
@@ -121,39 +141,23 @@
             color: color,
             fillColor: color,
             fillOpacity: 0.3,
-            radius: 50000, 
-            interactive: true
+            radius: 50000 // 初期50km
         }).addTo(map);
 
-        // 円のドラッグ移動機能
-        let isDragging = false;
-        circle.on('mousedown', function(event) {
-            isDragging = true;
-            map.dragging.disable();
-            L.DomEvent.stopPropagation(event);
-        });
-
-        map.on('mousemove', function(event) {
-            if (isDragging) {
-                circle.setLatLng(event.latlng);
-                updateQuery();
-            }
-        });
-
-        map.on('mouseup', function() {
-            if (isDragging) {
-                isDragging = false;
-                map.dragging.enable();
-            }
+        // 円のクリックイベント：半径調整
+        circle.on('click', function(ev) {
+            L.DomEvent.stopPropagation(ev); // 地図クリックの発火を防ぐ
+            openRadiusControl(circle);
         });
 
         // ダブルクリックで削除
-        circle.on('dblclick', function(event) {
+        circle.on('dblclick', function(ev) {
+            L.DomEvent.stopPropagation(ev);
             map.removeLayer(circle);
             includeCircles = includeCircles.filter(c => c !== circle);
             excludeCircles = excludeCircles.filter(c => c !== circle);
+            closeRadiusControl();
             updateQuery();
-            L.DomEvent.stopPropagation(event);
         });
 
         if (currentMode === 'include') includeCircles.push(circle);
@@ -161,38 +165,59 @@
 
         updateQuery();
         currentMode = null;
-        document.getElementById('map').style.cursor = '';
+        document.body.style.cursor = 'default';
     });
+
+    // 半径調整パネルの制御
+    function openRadiusControl(circle) {
+        selectedCircle = circle;
+        const panel = document.getElementById('radius-control');
+        const slider = document.getElementById('radius-slider');
+        const valDisp = document.getElementById('radius-val');
+        
+        panel.style.display = 'block';
+        slider.value = Math.round(circle.getRadius() / 1000);
+        valDisp.innerText = slider.value;
+
+        slider.oninput = function() {
+            const km = this.value;
+            valDisp.innerText = km;
+            selectedCircle.setRadius(km * 1000);
+            updateQuery();
+        };
+    }
+
+    function closeRadiusControl() {
+        document.getElementById('radius-control').style.display = 'none';
+        selectedCircle = null;
+    }
 
     function updateQuery() {
         let queryParts = [];
-        includeCircles.forEach(c => {
+        const format = (c, prefix) => {
             const lat = c.getLatLng().lat.toFixed(4);
             const lng = c.getLatLng().lng.toFixed(4);
             const rad = Math.round(c.getRadius() / 1000);
-            queryParts.push(`geocode:${lat},${lng},${rad}km`);
-        });
+            return `${prefix}geocode:${lat},${lng},${rad}km`;
+        };
 
-        excludeCircles.forEach(c => {
-            const lat = c.getLatLng().lat.toFixed(4);
-            const lng = c.getLatLng().lng.toFixed(4);
-            const rad = Math.round(c.getRadius() / 1000);
-            queryParts.push(`-geocode:${lat},${lng},${rad}km`);
-        });
+        includeCircles.forEach(c => queryParts.push(format(c, '')));
+        excludeCircles.forEach(c => queryParts.push(format(c, '-')));
 
         document.getElementById('query-display').innerText = queryParts.join(' ');
     }
 
     function copyToClipboard() {
         const text = document.getElementById('query-display').innerText;
+        const lang = document.getElementById('langSelect').value;
         if (!text) return;
         navigator.clipboard.writeText(text).then(() => {
-            alert(i18n[currentLang].copyMsg);
+            alert(i18n[lang].copied);
         });
     }
 
     // 初期化
-    updateQuery();
+    changeLanguage();
 </script>
 
 </body>
