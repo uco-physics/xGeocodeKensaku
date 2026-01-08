@@ -1,1 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X(Twitter) Geocode Generator</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        #controls { padding: 15px; background: #f8f9fa; border-bottom: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 1000; }
+        #map { flex-grow: 1; }
+        .result-area { margin-top: 10px; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        #query-display { font-family: monospace; word-break: break-all; color: #1d9bf0; font-weight: bold; }
+        .btn { padding: 8px 15px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; margin-right: 5px; }
+        .btn-add { background: #1d9bf0; color: white; }
+        .btn-exclude { background: #e0245e; color: white; }
+        .btn-copy { background: #4b5563; color: white; }
+        .instruction { font-size: 0.85rem; color: #666; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
 
+<div id="controls">
+    <h3>X Geocode Generator</h3>
+    <p class="instruction">1. ボタンを押してから地図をクリックして円を設置 / 2. 円の端をドラッグして半径を調整 / 3. 中央をドラッグして移動</p>
+    <button class="btn btn-add" onclick="setMode('include')">+ 検索範囲を追加</button>
+    <button class="btn btn-exclude" onclick="setMode('exclude')">- 除外範囲を追加</button>
+    <button class="btn btn-copy" onclick="copyToClipboard()">コマンドをコピー</button>
+    
+    <div class="result-area">
+        <strong>検索コマンド:</strong><br>
+        <span id="query-display">geocode:31.25,34.8,250km</span>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let map = L.map('map').setView([31.5, 34.8], 7); // 初期位置はイスラエル付近
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let includeCircles = [];
+    let excludeCircles = [];
+    let currentMode = null;
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.body.style.cursor = 'crosshair';
+    }
+
+    map.on('click', function(e) {
+        if (!currentMode) return;
+
+        const color = currentMode === 'include' ? '#1d9bf0' : '#e0245e';
+        const circle = L.circle(e.latlng, {
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.3,
+            radius: 50000, // 初期50km
+            draggable: true
+        }).addTo(map);
+
+        // 簡易的な編集機能（ドラッグ移動と半径変更を可能にするライブラリの代わりの実装）
+        // 中心移動
+        circle.on('mousedown', function() {
+            map.dragging.disable();
+            map.on('mousemove', function(mo) {
+                circle.setLatLng(mo.latlng);
+                updateQuery();
+            });
+        });
+
+        map.on('mouseup', function() {
+            map.dragging.enable();
+            map.off('mousemove');
+        });
+
+        // ダブルクリックで削除
+        circle.on('dblclick', function() {
+            map.removeLayer(circle);
+            includeCircles = includeCircles.filter(c => c !== circle);
+            excludeCircles = excludeCircles.filter(c => c !== circle);
+            updateQuery();
+        });
+
+        if (currentMode === 'include') includeCircles.push(circle);
+        else excludeCircles.push(circle);
+
+        updateQuery();
+        currentMode = null;
+        document.body.style.cursor = 'default';
+    });
+
+    // 右クリックで半径を大きくする簡易エディタ（スマホ考慮なし、PC向け）
+    map.on('contextmenu', (e) => e.originalEvent.preventDefault());
+
+    function updateQuery() {
+        let queryParts = [];
+        
+        includeCircles.forEach(c => {
+            const lat = c.getLatLng().lat.toFixed(4);
+            const lng = c.getLatLng().lng.toFixed(4);
+            const rad = Math.round(c.getRadius() / 1000);
+            queryParts.push(`geocode:${lat},${lng},${rad}km`);
+        });
+
+        excludeCircles.forEach(c => {
+            const lat = c.getLatLng().lat.toFixed(4);
+            const lng = c.getLatLng().lng.toFixed(4);
+            const rad = Math.round(c.getRadius() / 1000);
+            queryParts.push(`-geocode:${lat},${lng},${rad}km`);
+        });
+
+        document.getElementById('query-display').innerText = queryParts.join(' ');
+    }
+
+    function copyToClipboard() {
+        const text = document.getElementById('query-display').innerText;
+        navigator.clipboard.writeText(text).then(() => alert('コピーしました！'));
+    }
+</script>
+
+</body>
+</html>
